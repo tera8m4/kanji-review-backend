@@ -1,0 +1,13 @@
+{
+  "dependencies": {
+    "@fastify/mongodb": "^9.0.2",
+    "@types/node": "^22.13.1",
+    "fastify": "^5.2.1",
+    "typescript": "^5.7.3"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node index.js",
+    "init": "tsc --init"
+  }
+}

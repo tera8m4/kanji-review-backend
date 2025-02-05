@@ -1,15 +1,20 @@
 import Fastify, { FastifyInstance } from 'fastify';
 import { Kanji, ReviewState, Word } from './types';
-import { connectToDatabase } from './db';
-import { ObjectId } from 'mongodb';
+import { calculateSrsInterval, calculateStsNextStage } from './srs';
 
 const app: FastifyInstance = Fastify({ logger: true });
 
 // Connect to MongoDB
-app.register(connectToDatabase);
+app.register(require('@fastify/mongodb'), {
+  // force to close the mongodb connection when app stopped
+  // the default value is false
+  forceClose: true,
+
+  url: 'mongodb://localhost:27017/kanji_db'
+});
 
 // Add new kanji endpoint
-app.post('/kanji', async (request, reply) => {
+app.post('/kanji', async function (request, reply) {
   const kanji = request.body as Omit<Kanji, '_id' | 'review_state'>;
   const now = new Date();
   const defaultReviewState: ReviewState = {
@@ -24,19 +29,19 @@ app.post('/kanji', async (request, reply) => {
     review_state: defaultReviewState,
   };
 
-  const result = await app.mongo.db?.collection<Kanji>('kanjis').insertOne(newKanji);
+  const result = await this.mongo.db.collection<Kanji>('kanjis').insertOne(newKanji);
   return reply.code(201).send({ id: result?.insertedId });
 });
 
 // Update review state endpoint
 app.post<{ Params: { id: string }, Body: { correct: boolean } }>(
   '/kanji/:id/review',
-  async (request, reply) => {
+  async function (request, reply) {
     const { id } = request.params;
     const { correct } = request.body;
 
-    const kanji = await app.mongo.db?.collection<Kanji>('kanjis').findOne({
-      _id: new ObjectId(id).toString(),
+    const kanji = await this.mongo.db.collection<Kanji>('kanjis').findOne({
+      _id: id,
     });
 
     if (!kanji) {
@@ -45,37 +50,49 @@ app.post<{ Params: { id: string }, Body: { correct: boolean } }>(
 
     const currentReview = kanji.review_state;
     const now = new Date();
-    let update: ReviewState = Object.assign({}, kanji.review_state);
+    const update: ReviewState = Object.assign({}, kanji.review_state);
     update.last_review_time = now;
+    update.stage = calculateStsNextStage(currentReview.stage, currentReview.incorrect_streak, correct);
+    update.next_review_time = new Date(now.getTime() + calculateSrsInterval(update.stage));
+    update.incorrect_streak = correct ? 0 : update.incorrect_streak + 1;
 
-    if (correct) {
-      const nextStage = currentReview.stage + 1;
-      const interval = 24 * 60 * 60 * 1000 * Math.pow(2, nextStage); // Exponential spacing
-      update = {
-        ...update,
-        stage: nextStage,
-        incorrect_streak: 0,
-        next_review_time: new Date(now.getTime() + interval),
-      };
-    } else {
-      update = {
-        ...update,
-        incorrect_streak: currentReview.incorrect_streak + 1,
-        stage: Math.max(0, currentReview.stage - 1),
-        next_review_time: new Date(now.getTime() + 24 * 60 * 60 * 1000), // Retry next day
-      };
-    }
-
-    const objectId = new ObjectId(id);
-
-    await app.mongo.db?.collection<Kanji>('kanjis').updateOne(
-      { _id: objectId.toString() },
+    await this.mongo.db?.collection<Kanji>('kanjis').updateOne(
+      { _id: id },
       { $set: { review_state: update } }
     );
 
     return reply.code(200).send({ message: 'Review state updated' });
   }
 );
+
+app.get<{ Params: { id: string } }>('/kanji/:id/review', async function (req, res) {
+  const { id } = req.params;
+
+  try {
+    const kanji = await this.mongo.db?.collection<Kanji>('kanjis').findOne({
+      _id: id
+    });
+
+    if (!kanji) {
+      return res.code(404).send({ error: 'Kanji not found' });
+    }
+
+    const response: { words: Word[] } = {
+      words: [],
+    };
+
+    if (kanji.review_state.next_review_time < new Date()) {
+      response.words = kanji.words;
+    }
+
+    return res.code(200).send(response);
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('invalid input')) {
+      return res.code(400).send({ error: 'Invalid Kanji ID format' });
+    }
+    return res.code(500).send({ error: 'Internal server error' });
+  }
+});
 
 const start = async () => {
   try {

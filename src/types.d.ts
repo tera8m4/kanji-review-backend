@@ -18,3 +18,15 @@ export interface Kanji {
     words: Word[];
     review_state: ReviewState;
 }
+
+import 'fastify';
+import { MongoClient, Db } from 'mongodb';
+
+declare module 'fastify' {
+    interface FastifyInstance {
+        mongo: {
+            client: MongoClient;
+            db: Db; // Alternatively, you can specify types if needed.
+        };
+    }
+}

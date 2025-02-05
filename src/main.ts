@@ -10,7 +10,7 @@ app.register(require('@fastify/mongodb'), {
   // the default value is false
   forceClose: true,
 
-  url: 'mongodb://localhost:27017/kanji_db'
+  url: process.env.MONGO_URL || 'mongodb://localhost:27017/kanji_db'
 });
 
 // Add new kanji endpoint
@@ -96,7 +96,7 @@ app.get<{ Params: { id: string } }>('/kanji/:id/review', async function (req, re
 
 const start = async () => {
   try {
-    await app.listen({ port: 3000 });
+    await app.listen({ port: 3000, host: '0.0.0.0' });
     console.log('Server running on port 3000');
   } catch (err) {
     app.log.error(err);

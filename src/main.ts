@@ -1,8 +1,15 @@
 import Fastify, { FastifyInstance } from 'fastify';
 import { Kanji, ReviewState, Word } from './types';
 import { calculateSrsInterval, calculateStsNextStage } from './srs';
+import cors from '@fastify/cors'; // Import the CORS plugin
+import { ObjectId } from '@fastify/mongodb';
 
 const app: FastifyInstance = Fastify({ logger: true });
+
+// Register CORS to allow any domain
+app.register(cors, {
+  origin: '*', // Allow all domains
+});
 
 // Connect to MongoDB
 app.register(require('@fastify/mongodb'), {
@@ -11,6 +18,24 @@ app.register(require('@fastify/mongodb'), {
   forceClose: true,
 
   url: process.env.MONGO_URL || 'mongodb://localhost:27017/kanji_db'
+});
+
+// Add a new endpoint to get the list of kanjis
+app.get('/kanji', async function (request, reply) {
+  try {
+    const kanjis = await this.mongo.db.collection<Kanji>('kanjis').find().toArray();
+
+    // Map the results to only include the required fields
+    const response = kanjis.map((k) => ({
+      id: k._id,
+      character: k.character, // assuming 'character' is a field in your Kanji type
+      next_review_time: k.review_state.next_review_time,
+    }));
+
+    return reply.code(200).send(response);
+  } catch (err) {
+    return reply.code(500).send({ error: 'Internal server error' });
+  }
 });
 
 // Add new kanji endpoint
@@ -66,13 +91,13 @@ app.post<{ Params: { id: string }, Body: { correct: boolean } }>(
 );
 
 app.get<{ Params: { id: string } }>('/kanji/:id/review', async function (req, res) {
-  const { id } = req.params;
+
+  const id: ObjectId = new ObjectId(req.params.id)
 
   try {
-    const kanji = await this.mongo.db?.collection<Kanji>('kanjis').findOne({
-      _id: id
-    });
-
+    const filter: any = { _id: id };
+    const kanji = await this.mongo.db.collection<Kanji>('kanjis').findOne(filter);
+    console.log(kanji);
     if (!kanji) {
       return res.code(404).send({ error: 'Kanji not found' });
     }

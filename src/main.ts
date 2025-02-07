@@ -120,6 +120,44 @@ app.get<{ Params: { id: string } }>('/kanji/:id/review', async function (req, re
   }
 });
 
+app.put<{ Params: { id: string }, Body: { character?: string; readings?: string[]; words?: Word[] } }>(
+  '/kanji/:id',
+  async function (request, reply) {
+    const id = new ObjectId(request.params.id);
+    const updateFields = request.body;
+
+    // Validate that at least one field is provided to update
+    if (!updateFields.character && !updateFields.readings && !updateFields.words) {
+      return reply.code(400).send({ error: 'No update field provided' });
+    }
+
+    const filter: any = { _id: id };
+
+    try {
+      const updateResult = await this.mongo.db.collection<Kanji>('kanjis').updateOne(filter, { $set: updateFields });
+
+      if (updateResult.matchedCount === 0) {
+        return reply.code(404).send({ error: 'Kanji not found' });
+      }
+
+      return reply.code(200).send({ message: 'Kanji updated' });
+    } catch (err) {
+      return reply.code(500).send({ error: 'Internal server error' });
+    }
+  }
+);
+
+app.get<{ Params: { id: string } }>('/kanji/:id', async function (req, res) {
+  const id = new ObjectId(req.params.id);
+  const filter: any = { _id: id };
+  try {
+    const kanji = await this.mongo.db.collection<Kanji>('kanjis').findOne(filter);
+    return res.code(200).send(kanji);
+  } catch (err) {
+    return res.code(404);
+  }
+});
+
 const start = async () => {
   try {
     await app.listen({ port: 3000, host: '0.0.0.0' });

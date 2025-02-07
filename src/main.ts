@@ -62,12 +62,13 @@ app.post('/kanji', async function (request, reply) {
 app.post<{ Params: { id: string }, Body: { correct: boolean } }>(
   '/kanji/:id/review',
   async function (request, reply) {
-    const { id } = request.params;
+    const id = new ObjectId(request.params.id);
     const { correct } = request.body;
 
-    const kanji = await this.mongo.db.collection<Kanji>('kanjis').findOne({
+    const filter: any = {
       _id: id,
-    });
+    };
+    const kanji = await this.mongo.db.collection<Kanji>('kanjis').findOne(filter);
 
     if (!kanji) {
       return reply.code(404).send({ error: 'Kanji not found' });
@@ -82,7 +83,7 @@ app.post<{ Params: { id: string }, Body: { correct: boolean } }>(
     update.incorrect_streak = correct ? 0 : update.incorrect_streak + 1;
 
     await this.mongo.db?.collection<Kanji>('kanjis').updateOne(
-      { _id: id },
+      filter,
       { $set: { review_state: update } }
     );
 
@@ -97,7 +98,7 @@ app.get<{ Params: { id: string } }>('/kanji/:id/review', async function (req, re
   try {
     const filter: any = { _id: id };
     const kanji = await this.mongo.db.collection<Kanji>('kanjis').findOne(filter);
-    console.log(kanji);
+
     if (!kanji) {
       return res.code(404).send({ error: 'Kanji not found' });
     }

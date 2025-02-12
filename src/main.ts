@@ -58,6 +58,19 @@ app.post('/kanji', async function (request, reply) {
   return reply.code(201).send({ id: result?.insertedId });
 });
 
+app.delete<{ Params: { id: string } }>('/kanji/:id', async function (req, res) {
+  const id = new ObjectId(req.params.id);
+  const filter: any = {
+    _id: id,
+  };
+  try {
+    await this.mongo.db.collection<Kanji>('kanjis').deleteOne(filter);
+    return res.code(200).send({ msg: "removed" });
+  } catch (err) {
+    return res.code(500).send({ error: 'Internal server error' });
+  }
+});
+
 // Update review state endpoint
 app.post<{ Params: { id: string }, Body: { correct: boolean } }>(
   '/kanji/:id/review',
